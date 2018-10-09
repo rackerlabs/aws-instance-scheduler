@@ -32,6 +32,8 @@ INF_FETCHING_INSTANCES = "Fetching ec2 instances for account {} in region {}"
 INF_SETTING_SIZE = "Setting size for ec2 instance {} to {}"
 INF_ADD_KEYS = "Adding {} key(s) {} to instance(s) {}"
 INFO_REMOVING_KEYS = "Removing {} key(s) {} from instance(s) {}"
+INFO_SUSPENDING_ASG = "Suspending ASG {} in region {}"
+INFO_RESUMING_ASG = "Resuming ASG {} in region {}"
 
 WARN_STARTED_INSTANCES_TAGGING = "Error deleting or creating tags for started instances {} ({})"
 WARN_STOPPED_INSTANCES_TAGGING = "Error deleting or creating tags for stopped instances {} ({})"
@@ -178,33 +180,37 @@ class Ec2Service:
     def get_asg(self, client, instance_ids):
         asg = client.describe_auto_scaling_instances_with_retries(InstanceIds=instance_ids)
         jmes = "AutoScalingInstances[*].AutoScalingGroupName"
-        return jmespath.search(jmes, response)
+        return jmespath.search(jmes, asg)
 
     def suspend_asg(self, instance_ids):
         client = get_client_with_retries("autoscaling",
                                         ["describe_auto_scaling_instances","suspend_processes"],
                                         context=self._context, session=self._session, region=self._region)
         try:
-            asg_names = self.get_asg(client, instances_ids)
-            return client.suspend_processes_with_retries(
-                AutoScalingGroupName=asg_names,
-                ScalingProcesses=['Launch','Terminate',]
-            )
+            asg_names = self.get_asg(client, instance_ids)
+            for asg_name in asg_names:
+                self._logger.info(INFO_SUSPENDING_ASG, asg_name, self._region)
+                client.suspend_processes_with_retries(
+                    AutoScalingGroupName=asg_name,
+                    ScalingProcesses=['Launch','Terminate',]
+                )
         except Exception as ex:
-            self._logger.error("Error suspend asg scaling {}, ({})", ",".join(instance.id), str(ex))
+            self._logger.error("Error suspend asg scaling, ({})", str(ex))
 
     def resume_asg(self, instance_ids):
         client = get_client_with_retries("autoscaling",
                                         ["describe_auto_scaling_instances","resume_processes"],
                                         context=self._context, session=self._session, region=self._region)
         try:
-            asg_names = self.get_asg(client, instances_ids)
-            return client.resume_processes_with_retries(
-                AutoScalingGroupName=ASGName,
-                ScalingProcesses=['Launch','Terminate',]
-            )
+            asg_names = self.get_asg(client, instance_ids)
+            for asg_name in asg_names:
+                self._logger.info(INFO_RESUMING_ASG, asg_name, self._region)
+                client.resume_processes_with_retries(
+                    AutoScalingGroupName=asg_name,
+                    ScalingProcesses=['Launch','Terminate',]
+                )
         except Exception as ex:
-            self._logger.error("Error resume asg scaling {}, ({})", ",".join(instance.id), str(ex))
+            self._logger.error("Error resume asg scaling, ({})", str(ex))
 
     # noinspection PyMethodMayBeStatic
     def stop_instances(self, kwargs):

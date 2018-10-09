@@ -73,6 +73,16 @@
                         }, {
                             "Effect": "Allow",
                             "Action": [
+                                "autoscaling:DescribeAutoScalingInstances",
+                                "autoscaling:SuspendProcesses",
+                                "autoscaling:ResumeProcesses"
+                            ],
+                            "Resource": [
+                                "*"
+                            ]
+                        }, {
+                            "Effect": "Allow",
+                            "Action": [
                                 "rds:DescribeDBInstances",
                                 "rds:DescribeDBSnapshots",
                                 "rds:StartDBInstance",
