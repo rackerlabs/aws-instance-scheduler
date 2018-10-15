@@ -784,6 +784,7 @@
                         "Effect": "Allow",
                         "Action": [
                             "autoscaling:DescribeAutoScalingInstances",
+                            "autoscaling:DescribeAutoScalingGroups",
                             "autoscaling:SuspendProcesses",
                             "autoscaling:ResumeProcesses"
                         ],
