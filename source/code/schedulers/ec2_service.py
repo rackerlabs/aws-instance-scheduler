@@ -32,8 +32,8 @@ INF_FETCHING_INSTANCES = "Fetching ec2 instances for account {} in region {}"
 INF_SETTING_SIZE = "Setting size for ec2 instance {} to {}"
 INF_ADD_KEYS = "Adding {} key(s) {} to instance(s) {}"
 INFO_REMOVING_KEYS = "Removing {} key(s) {} from instance(s) {}"
-INFO_SUSPENDING_ASG = "Suspending ASG {} in region {}"
-INFO_RESUMING_ASG = "Resuming ASG {} in region {}"
+INFO_SUSPENDING_ASG = "ASG: Suspending ASG {} in region {}"
+INFO_RESUMING_ASG = "ASG: Resuming ASG {} in region {}"
 
 WARN_STARTED_INSTANCES_TAGGING = "Error deleting or creating tags for started instances {} ({})"
 WARN_STOPPED_INSTANCES_TAGGING = "Error deleting or creating tags for stopped instances {} ({})"
@@ -42,7 +42,6 @@ WARNING_INSTANCE_NOT_STOPPING = "Ec2 instance {} is not stopped"
 
 DEBUG_SKIPPED_INSTANCE = "Skipping ec2 instance {} because it it not in a schedulable state ({})"
 DEBUG_SELECTED_INSTANCE = "Selected ec2 instance {} in state ({})"
-
 
 class Ec2Service:
     """
@@ -58,6 +57,8 @@ class Ec2Service:
     EC2_SCHEDUABLE_STATES = {EC2_STATE_RUNNING, EC2_STATE_STOPPED}
     EC2_STOPPING_STATES = {EC2_STATE_SHUTTING_DOWN, EC2_STATE_STOPPING, EC2_STATE_STOPPED}
     EC2_STARTING_STATES = {EC2_STATE_PENDING, EC2_STATE_RUNNING}
+
+    ASG_RESUME_LAMBDA = "arn:aws:lambda:ap-southeast-1:569342330542:function:ec2scheduler-resumeASG"
 
     def __init__(self):
         self.service_name = "ec2"
@@ -195,22 +196,24 @@ class Ec2Service:
                     ScalingProcesses=['Launch','Terminate',]
                 )
         except Exception as ex:
-            self._logger.error("Error suspend asg scaling, ({})", str(ex))
+            self._logger.error("ASG: Error suspend asg scaling, ({})", str(ex))
 
-    def resume_asg(self, instance_ids):
-        client = get_client_with_retries("autoscaling",
-                                        ["describe_auto_scaling_instances","resume_processes"],
+    def invoke_resume_asg(self, instance_ids):
+        client = get_client_with_retries("lambda",
+                                        ["invoke"],
                                         context=self._context, session=self._session, region=self._region)
-        try:
-            asg_names = self.get_asg(client, instance_ids)
-            for asg_name in asg_names:
-                self._logger.info(INFO_RESUMING_ASG, asg_name, self._region)
-                client.resume_processes_with_retries(
-                    AutoScalingGroupName=asg_name,
-                    ScalingProcesses=['Launch','Terminate',]
+        for instance_id in instance_ids:
+            try:
+                self._logger.info("ASG: invoke resume asg for instance {}", str(instance_id))
+                response = client.invoke_with_retries(
+                    FunctionName=Ec2Service.ASG_RESUME_LAMBDA,
+                    InvocationType='Event',
+                    LogType='Tail',
+                    ClientContext=self._context,
+                    Payload='{"account": "{}","instance": "{}"}'.format(self._account, instance_id)
                 )
-        except Exception as ex:
-            self._logger.error("Error resume asg scaling, ({})", str(ex))
+            except Exception as ex:
+                self._logger.error("ASG: Error invoke ec2scheduler-resumeASG lambda, ({})", str(ex))
 
     # noinspection PyMethodMayBeStatic
     def stop_instances(self, kwargs):
@@ -329,7 +332,7 @@ class Ec2Service:
                 for i in instances_starting:
                     yield i, InstanceSchedule.STATE_RUNNING
 
-                self.resume_asg(instance_ids)
+                self.invoke_resume_asg(instance_ids)
 
             except Exception as ex:
                 self._logger.error(ERR_STARTING_INSTANCES, ",".join(instance_ids), str(ex))
