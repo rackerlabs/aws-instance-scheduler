@@ -212,7 +212,6 @@ class Ec2Service:
                     LogType='Tail',
                     Payload=bytes(json.dumps(payload))
                 )
-                self._logger.info(response)
             except Exception as ex:
                 self._logger.error("ASG: Error invoke ec2scheduler-resumeASG lambda, ({})", str(ex))
 
@@ -333,7 +332,10 @@ class Ec2Service:
                 for i in instances_starting:
                     yield i, InstanceSchedule.STATE_RUNNING
 
-                asg_names = self.get_asg(client, instance_ids)
+                asg_client = get_client_with_retries("autoscaling",
+                                                ["describe_auto_scaling_instances","suspend_processes"],
+                                                context=self._context, session=self._session, region=self._region)
+                asg_names = self.get_asg(asg_client, instance_ids)
                 self.invoke_resume_asg(asg_names)
 
             except Exception as ex:
