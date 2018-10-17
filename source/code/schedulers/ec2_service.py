@@ -198,20 +198,21 @@ class Ec2Service:
         except Exception as ex:
             self._logger.error("ASG: Error suspend asg scaling, ({})", str(ex))
 
-    def invoke_resume_asg(self, instance_ids):
-        client = get_client_with_retries("lambda",
-                                        ["invoke"],
-                                        context=self._context, session=self._session, region=self._region)
-        for instance_id in instance_ids:
+    def invoke_resume_asg(self, asg_names):
+        import boto3
+        import json
+        client = boto3.client('lambda')
+        for asg_name in asg_names:
             try:
-                self._logger.info("ASG: invoke resume asg for instance {}", str(instance_id))
-                response = client.invoke_with_retries(
+                self._logger.info("ASG: invoke resume asg {}", str(asg_name))
+                payload = {"asg_name": str(asg_name)}
+                response = client.invoke(
                     FunctionName=Ec2Service.ASG_RESUME_LAMBDA,
                     InvocationType='Event',
                     LogType='Tail',
-                    ClientContext=self._context,
-                    Payload='{"account": "{}","instance": "{}"}'.format(self._account, instance_id)
+                    Payload=bytes(json.dumps(payload))
                 )
+                self._logger.info(response)
             except Exception as ex:
                 self._logger.error("ASG: Error invoke ec2scheduler-resumeASG lambda, ({})", str(ex))
 
@@ -332,7 +333,8 @@ class Ec2Service:
                 for i in instances_starting:
                     yield i, InstanceSchedule.STATE_RUNNING
 
-                self.invoke_resume_asg(instance_ids)
+                asg_names = self.get_asg(client, instance_ids)
+                self.invoke_resume_asg(asg_names)
 
             except Exception as ex:
                 self._logger.error(ERR_STARTING_INSTANCES, ",".join(instance_ids), str(ex))
