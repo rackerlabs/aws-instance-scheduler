@@ -193,27 +193,25 @@ class Ec2Service:
                 self._logger.info(INFO_SUSPENDING_ASG, asg_name, self._region)
                 client.suspend_processes_with_retries(
                     AutoScalingGroupName=asg_name,
-                    ScalingProcesses=['Launch','Terminate',]
+                    ScalingProcesses=['Launch','Terminate','HealthCheck']
                 )
         except Exception as ex:
             self._logger.error("ASG: Error suspend asg scaling, ({})", str(ex))
 
-    def invoke_resume_asg(self, asg_names):
-        import boto3
-        import json
-        client = boto3.client('lambda')
-        for asg_name in asg_names:
-            try:
-                self._logger.info("ASG: invoke resume asg {}", str(asg_name))
-                payload = {"asg_name": str(asg_name)}
-                response = client.invoke(
-                    FunctionName=Ec2Service.ASG_RESUME_LAMBDA,
-                    InvocationType='Event',
-                    LogType='Tail',
-                    Payload=bytes(json.dumps(payload))
+    def resume_asg(self, instance_ids):
+        client = get_client_with_retries("autoscaling",
+                                        ["describe_auto_scaling_instances","resume_processes"],
+                                        context=self._context, session=self._session, region=self._region)
+        try:
+            asg_names = self.get_asg(client, instance_ids)
+            for asg_name in asg_names:
+                self._logger.info(INFO_RESUMING_ASG, asg_name, self._region)
+                client.resume_processes_with_retries(
+                    AutoScalingGroupName=asg_name,
+                    ScalingProcesses=['Launch','Terminate','HealthCheck']
                 )
-            except Exception as ex:
-                self._logger.error("ASG: Error invoke ec2scheduler-resumeASG lambda, ({})", str(ex))
+        except Exception as ex:
+            self._logger.error("ASG: Error resume asg scaling ({})", str(ex))
 
     # noinspection PyMethodMayBeStatic
     def stop_instances(self, kwargs):
@@ -332,11 +330,7 @@ class Ec2Service:
                 for i in instances_starting:
                     yield i, InstanceSchedule.STATE_RUNNING
 
-                asg_client = get_client_with_retries("autoscaling",
-                                                ["describe_auto_scaling_instances","suspend_processes"],
-                                                context=self._context, session=self._session, region=self._region)
-                asg_names = self.get_asg(asg_client, instance_ids)
-                self.invoke_resume_asg(asg_names)
+                self.resume_asg(instance_ids)
 
             except Exception as ex:
                 self._logger.error(ERR_STARTING_INSTANCES, ",".join(instance_ids), str(ex))
