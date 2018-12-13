@@ -58,8 +58,6 @@ class Ec2Service:
     EC2_STOPPING_STATES = {EC2_STATE_SHUTTING_DOWN, EC2_STATE_STOPPING, EC2_STATE_STOPPED}
     EC2_STARTING_STATES = {EC2_STATE_PENDING, EC2_STATE_RUNNING}
 
-    ASG_RESUME_LAMBDA = "arn:aws:lambda:ap-southeast-1:569342330542:function:ec2scheduler-resumeASG"
-
     def __init__(self):
         self.service_name = "ec2"
         self.allow_resize = True
