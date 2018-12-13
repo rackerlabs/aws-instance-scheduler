@@ -39,7 +39,7 @@ def lambda_handler(event, context):
         with Logger(logstream=log_stream, buffersize=20, context=context,
                     debug=util.as_bool(os.getenv(configuration.ENV_TRACE, False))) as logger:
 
-            logger.info("InstanceScheduler, version %version%")
+            logger.info("InstanceScheduler, version 2.2.2.0")
 
             logger.debug("Event is {}", util.safe_json(event, indent=3))
 
